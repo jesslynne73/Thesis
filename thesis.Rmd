@@ -1,0 +1,568 @@
+---
+title: "Thesis"
+author: "Jess Strait"
+output: html_notebook
+---
+
+Front Matter 
+
+
+```{r}
+# Clear environment
+rm(list = ls())
+# Load packages
+library(rmarkdown)
+library(dplyr)
+library(caret) 
+library(stats)
+library(Metrics)
+library(ggplot2)
+library(mltools)
+library(data.table)
+library(plyr)
+library(MASS)
+library(olsrr)
+library(car)
+library(ISLR)
+library(tree)
+library(janitor)
+library(rattle)
+library(rpart.plot)
+library(rpart)
+library(maptree)
+library(wordcloud)
+library(wordcloud2)
+library(RColorBrewer)
+library(tm)
+library(randomForest)
+library(mctest)
+```
+
+
+```{r}
+# Intake data
+data <- read.csv("Cleaned-Results.csv", header=TRUE)
+```
+
+
+```{r}
+# Extract variables for modeling
+mod_data <- data %>% dplyr::select(c(9:70, 72:78, 80, 82, 84:91))
+
+# Higher number = more strongly agree
+# Lower number = more strongly disagree
+
+for (i in 1:ncol(mod_data)){
+  mod_data[[i]] <- revalue(mod_data[[i]], c("Strongly Agree" = 7, "Somewhat Agree" = 6, "Slightly Agree" = 5, "Neither Agree nor Disagree" = 4, "Slightly Disagree" = 3, "Somewhat Disagree" = 2, "Strongly Disagree" = 1, "Prefer Not To Answer" = 0, "Extremely positive" = 7, "Somewhat positive"= 6, "Slightly positive" = 5,
+  "Neither positive nor negative" = 4, "Slightly negative" = 3, "Somewhat negative" = 2, "Extremely negative" = 1, "Don't Know/Prefer Not to Answer" = 0, "Don't Know/Prefer Not To Answer" = 0, "Neither Agree Nor Disagree" = 4, "A great deal" = 4, "A moderate amount" = 2, "A lot" = 3, "A little" = 1, "Unfamiliar With Menstrual Cups" = 0))
+}
+
+# Encode emotion words with regex
+mod_data$Stranger_Calm <- grepl("Calm", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Annoyed <- grepl("Annoyed", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Confused <- grepl("Confused", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Confident <- grepl("Confident", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Critical <- grepl("Critical", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Gentle <- grepl("Gentle", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Disappointed <- grepl("Disappointed", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Excited <- grepl("Excited", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Disgusted <- grepl("Disgusted", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Sympathetic <- grepl("Sympathetic", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Embarrassed <- grepl("Embarrassed", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Indifferent <- grepl("Indifferent", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Inspired <- grepl("Inspired", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Pressured <- grepl("Pressured", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Proud <- grepl("Proud", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+mod_data$Stranger_Shocked <- grepl("Shocked", mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice)
+
+mod_data$Cup_Sustain <- grepl("Sustainability", mod_data$Why.do.you.choose.to.use.a.menstrual.cup..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Cost <- grepl("Saves money", mod_data$Why.do.you.choose.to.use.a.menstrual.cup..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Comfort <- grepl("Comfortable", mod_data$Why.do.you.choose.to.use.a.menstrual.cup..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Curious <- grepl("Curious about menstrual cups", mod_data$Why.do.you.choose.to.use.a.menstrual.cup..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Friends <- grepl("Was encouraged to by friends", mod_data$Why.do.you.choose.to.use.a.menstrual.cup..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Long <- grepl("Ability to use the product for 12 hours", mod_data$Why.do.you.choose.to.use.a.menstrual.cup..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Swim <- grepl("Ability to swim with the product", mod_data$Why.do.you.choose.to.use.a.menstrual.cup..Select.all.that.apply..if.any....Selected.Choice)
+
+mod_data$Cup_Feel_Annoyed <- grepl("Annoyed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Fortunate <- grepl("Fortunate", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Anxious <- grepl("Anxious", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Clean <- grepl("Clean", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Dirty <- grepl("Dirty", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Confused <- grepl("Confused", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Confident <- grepl("Confident", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Disgusted <- grepl("Digusted", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Empowered <- grepl("Empowered", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Embarrassed <- grepl("Embarrassed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Excited <- grepl("Excited", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Frustrated <- grepl("Frustrated", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Relaxed <- grepl("Relaxed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Indifferent <- grepl("Indifferent", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Grateful <- grepl("Grateful", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Overwhelmed <- grepl("Overwhelmed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Uncomfortable <- grepl("Uncomfortable", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Cup_Feel_Secure <- grepl("Secure", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+
+mod_data$CC_Sustain <- grepl("Sustainability", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+mod_data$CC_Cost <- grepl("Saves money", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+mod_data$CC_Free <- grepl("Free product", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+mod_data$CC_Comfort <- grepl("Comfortable", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+mod_data$CC_Curious <- grepl("Curious about menstrual cups", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+mod_data$CC_Friends <- grepl("Was encouraged to by friends", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+mod_data$CC_Long <- grepl("Ability to use the product for 12 hours", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+mod_data$CC_Swim <- grepl("Ability to swim with the product", mod_data$Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Selected.Choice)
+
+mod_data$CC_Feel_Annoyed <- grepl("Annoyed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Fortunate <- grepl("Fortunate", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Anxious <- grepl("Anxious", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Clean <- grepl("Clean", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Dirty <- grepl("Dirty", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Confused <- grepl("Confused", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Confident <- grepl("Confident", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Disgusted <- grepl("Digusted", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Empowered <- grepl("Empowered", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Embarrassed <- grepl("Embarrassed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Excited <- grepl("Excited", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Frustrated <- grepl("Frustrated", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Relaxed <- grepl("Relaxed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Indifferent <- grepl("Indifferent", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Grateful <- grepl("Grateful", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Overwhelmed <- grepl("Overwhelmed", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Uncomfortable <- grepl("Uncomfortable", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+mod_data$CC_Feel_Secure <- grepl("Secure", mod_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1)
+
+mod_data$Pads <- grepl("Disposable pads", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Tampons <- grepl("Disposable tampons", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Discs <- grepl("Disposable menstrual discs", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Liners <- grepl("Disposable panty liners", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$RPads <- grepl("Reusable pads", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$RDiscs <- grepl("Reusable menstrual discs", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$RLiners <- grepl("Reusable panty liners", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$PeriodPanties <- grepl("Period Underwear", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$Sponge <- grepl("Menstrual Sponge", mod_data$What.menstrual.health.products.do.you.most.frequently.use.to.manage.your.period..Select.all.that.apply..if.any....Selected.Choice)
+
+mod_data$Feel_Annoyed <- grepl("Annoyed", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Fortunate <- grepl("Fortunate", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Anxious <- grepl("Anxious", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Clean <- grepl("Clean", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Dirty <- grepl("Dirty", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Confused <- grepl("Confused", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Confident <- grepl("Confident", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Disgusted <- grepl("Digusted", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Empowered <- grepl("Empowered", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Embarrassed <- grepl("Embarrassed", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Excited <- grepl("Excited", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Frustrated <- grepl("Frustrated", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Relaxed <- grepl("Relaxed", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Indifferent <- grepl("Indifferent", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Grateful <- grepl("Grateful", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Overwhelmed <- grepl("Overwhelmed", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Uncomfortable <- grepl("Uncomfortable", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+mod_data$Feel_Secure <- grepl("Secure", mod_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice)
+
+mod_data$NoCup_Expensive <- grepl("Too expensive", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_Where <- grepl("Don't know where to get one", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_How <- grepl("Don't know how to use one", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_Mess <- grepl("Messy", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_CareClean <- grepl("Too difficult to clean", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_Uncomfortable <- grepl("Uncomfortable", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_Satisfied <- grepl("Satisfied", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_Hassle <- grepl("Too much of a hassle", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+mod_data$NoCup_Interest <- grepl("Not interested", mod_data$Why.do.you.choose.not.to.regularly.use.menstrual.cups..Select.all.that.apply..if.any....Selected.Choice)
+
+mod_data$Asian <- grepl("Asian", mod_data$What.is.your.race..Select.all.that.apply....Selected.Choice)
+mod_data$Black <- grepl("Black", mod_data$What.is.your.race..Select.all.that.apply....Selected.Choice)
+mod_data$White <- grepl("White", mod_data$What.is.your.race..Select.all.that.apply....Selected.Choice)
+mod_data$Native <- grepl("Native American", mod_data$What.is.your.race..Select.all.that.apply....Selected.Choice)
+mod_data$Hawaiian <- grepl("Hawaiian", mod_data$What.is.your.race..Select.all.that.apply....Selected.Choice)
+mod_data$OtherRace <- grepl("Other", mod_data$What.is.your.race..Select.all.that.apply....Selected.Choice)
+
+
+encode_cols <- c("Where.do.you.attend.university......Text", "How.would.you.describe.your.gender.identity....Selected.Choice", "How.would.you.describe.your.gender.identity....Other.prefer.to.self.describe...Text", "What.is.your.race..Select.all.that.apply....Other...Text", "Are.you.Hispanic.or.Latino.", "Have.you.heard.the.term..period.poverty..before.", "The.hormone.most.directly.causing.menstruation.is.", "How.long.is.the.average.menstrual.cycle.", "What.can.cause.amenorrhea..or.the.absence.of.a.menstrual.period..Select.all.that.apply.", "Do.you.know.your.cervix.height.", "Do.you.regularly.use.a.menstrual.cup.", "Have.you.used.a.menstrual.cup.in.the.last.year.as.a.result.of.participating.in.the.CampusCup.program..sponsored.by.OrganiCup.", "For.how.long.have.you.been.using.a.menstrual.cup.", "Would.you.recommend.or.not.recommend.a.menstrual.cup.to.another.student.", "If.there.were.a.program.at.your.university.offering.free.menstrual.cups..would.you.encourage.other.students.to.participate.", "Had.you.ever.heard.of.menstrual.cups.before.participating.in.CampusCup.", "Had.you.ever.used.a.menstrual.cup.before.participating.in.CampusCup.", "Why.did.you.choose.to.participate.in.CampusCup..Select.all.that.apply....Other...Text","Would.you.recommend.or.not.recommend.a.menstrual.cup.to.another.student..1", "Did.CampusCup.impact.you.personally.", "Did.CampusCup.impact.your.university.community.", "Have.you.ever.heard.of.menstrual.cups.prior.to.this.study.", "If.there.were.a.program.at.your.university.offering.free.menstrual.cups..would.you.participate.")
+
+mod_data[encode_cols] <- lapply(mod_data[encode_cols], factor)
+
+# One-hot encode categorical variables
+mod_data <- one_hot(as.data.table(mod_data), cols=encode_cols)
+```
+
+```{r}
+mod_data$What.can.cause.amenorrhea..or.the.absence.of.a.menstrual.period..Select.all.that.apply._ <- NULL
+mod_data$What.is.your.race..Select.all.that.apply....Selected.Choice <- NULL
+mod_data$What.is.your.race..Select.all.that.apply....Other...Text_ <- NULL
+mod_data$Where.do.you.attend.university......Text_ <- NULL
+mod_data$How.would.you.describe.your.gender.identity....Selected.Choice_ <- NULL
+mod_data$Are.you.Hispanic.or.Latino._ <- NULL
+mod_data$If.a.stranger.asked.you.for.a.period.product..which.of.the.following..if.any..describe.how.you.would.feel..Select.all.that.apply....Selected.Choice <- NULL
+```
+
+
+```{r}
+# Compute education aggregate values - first, create right/wrong answer indicators
+# 1 = right answer, 0 = wrong answer
+mod_data$aggregate_education1[mod_data$The.hormone.most.directly.causing.menstruation.is._Estrogen == 1] <- 1
+mod_data$aggregate_education1[mod_data$The.hormone.most.directly.causing.menstruation.is._Estrogen == 0] <- 0
+
+mod_data$aggregate_education2[mod_data$`How.long.is.the.average.menstrual.cycle._28 days` == 1] <- 1
+mod_data$aggregate_education2[mod_data$`How.long.is.the.average.menstrual.cycle._28 days` == 0] <- 0
+
+mod_data$aggregate_education3[mod_data$`What.can.cause.amenorrhea..or.the.absence.of.a.menstrual.period..Select.all.that.apply._Stress,Pregnancy,Excessive exercise,Breastfeeding` == 1] <- 1
+mod_data$aggregate_education3[mod_data$`What.can.cause.amenorrhea..or.the.absence.of.a.menstrual.period..Select.all.that.apply._Stress,Pregnancy,Excessive exercise,Breastfeeding` == 0] <- 0
+
+# Convert ordinal variables to integer type
+
+mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....There.is.no.risk.of.toxic.shock.syndrome.if.a.menstruator.wears.a.tampon.for.longer.than.8.hours. <- as.integer(mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....There.is.no.risk.of.toxic.shock.syndrome.if.a.menstruator.wears.a.tampon.for.longer.than.8.hours.)
+
+mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Ovulation.causes.menstruation.<- as.integer(mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Ovulation.causes.menstruation.)
+
+mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.normal.to.lose.about.a.cup.of.blood.while.menstruating. <- as.integer(mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.normal.to.lose.about.a.cup.of.blood.while.menstruating.)
+
+mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.safe.for.menstruators.to.have.sex.while.menstruating. <- as.integer(mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.safe.for.menstruators.to.have.sex.while.menstruating.)
+
+mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Menstrual.flow.comes.from.the.bladder. <- as.integer(mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Menstrual.flow.comes.from.the.bladder.)
+
+# Encode ordinal education measures
+
+mod_data$aggregate_education4 <- 0
+mod_data$aggregate_education4[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....There.is.no.risk.of.toxic.shock.syndrome.if.a.menstruator.wears.a.tampon.for.longer.than.8.hours. < 4] <- 1
+mod_data$aggregate_education4[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....There.is.no.risk.of.toxic.shock.syndrome.if.a.menstruator.wears.a.tampon.for.longer.than.8.hours. > 3] <- 0
+
+mod_data$aggregate_education5 <- 0
+mod_data$aggregate_education5[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Ovulation.causes.menstruation. < 4] <- 0
+mod_data$aggregate_education5[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Ovulation.causes.menstruation. > 3] <- 1
+
+mod_data$aggregate_education6 <- 0
+mod_data$aggregate_education6[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.normal.to.lose.about.a.cup.of.blood.while.menstruating. < 4] <- 1
+mod_data$aggregate_education6[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.normal.to.lose.about.a.cup.of.blood.while.menstruating. > 3] <- 0
+
+mod_data$aggregate_education7 <- 0
+mod_data$aggregate_education7[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.safe.for.menstruators.to.have.sex.while.menstruating. < 4] <- 0
+mod_data$aggregate_education7[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....It.is.safe.for.menstruators.to.have.sex.while.menstruating. > 3] <- 1
+
+mod_data$aggregate_education8 <- 0
+mod_data$aggregate_education8[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Menstrual.flow.comes.from.the.bladder. < 4] <- 1
+mod_data$aggregate_education8[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....Menstrual.flow.comes.from.the.bladder. > 3] <- 0
+```
+
+
+```{r}
+# Compute education aggregate 
+# Higher number = more correct answers
+# Max score is 8
+mod_data$aggregate_education_final <- rowSums(mod_data[, 301:308])
+```
+
+```{r}
+# Clean data
+mod_data[] <- lapply(mod_data, gsub, pattern = "TRUE", replacement = "1", fixed = TRUE)
+mod_data[] <- lapply(mod_data, gsub, pattern = "FALSE", replacement = "0", fixed = TRUE)
+```
+
+
+```{r}
+# Compute attitude aggregate - ensure consistent numerical system such that higher number = more positive attitude about menstruation
+renumbering <- mod_data %>% dplyr::select(c(62, 64, 66, 68, 70, 72, 73, 78, 80, 82, 84, 85, 86, 87))
+renumbering <- renumbering %>% mutate_all(as.character)
+for (i in 1:ncol(renumbering)){
+  renumbering[[i]] <- revalue(renumbering[[i]], c("7" = 1, "6" = 2, "5" = 3, "3" = 5, "2" = 6, "1" = 7))
+}
+
+# Replace existing columns with new columns
+mod_data[[62]] <- renumbering[[1]]
+mod_data[[64]] <- renumbering[[2]]
+mod_data[[66]] <- renumbering[[3]]
+mod_data[[68]] <- renumbering[[4]]
+mod_data[[70]] <- renumbering[[5]]
+mod_data[[72]] <- renumbering[[6]]
+mod_data[[73]] <- renumbering[[7]]
+mod_data[[78]] <- renumbering[[8]]
+mod_data[[80]] <- renumbering[[9]]
+mod_data[[82]] <- renumbering[[10]]
+mod_data[[84]] <- renumbering[[11]]
+mod_data[[85]] <- renumbering[[12]]
+mod_data[[86]] <- renumbering[[13]]
+mod_data[[87]] <- renumbering[[14]]
+```
+
+
+```{r}
+# Compute the attitude aggregate
+# Higher score = more positive attitude about menstruation
+# Max possible is 203
+sub_mod <- mod_data[, c(62:89, 91)]
+sub_mod[is.na(sub_mod)] <- 0
+sub_mod[sub_mod == " "] <- 0
+sub_mod <- as.data.frame(sapply(sub_mod, as.numeric))
+aggregate_attitude_final <- rowSums(sub_mod, na.rm=TRUE)
+
+mod_data$aggregate_attitude_final <- aggregate_attitude_final
+```
+
+
+```{r}
+# Clean functionality appreciation data
+mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....I.appreciate.my.body.for.what.it.is.capable.of.doing.[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....I.appreciate.my.body.for.what.it.is.capable.of.doing. == "Prefer Not to Answer"] <- 0
+
+mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....I.feel.that.my.body.does.so.much.for.me.[mod_data$To.what.extent.do.you.agree.or.disagree.with.the.following.statements....I.feel.that.my.body.does.so.much.for.me. == "Prefer Not to Answer"] <- 0
+```
+
+
+```{r}
+# Join participant group indicators
+# 1 = Non-cup user
+# 2 = Independent cup user
+# 3 = CampusCup participant
+participant_labels <- read.csv("participant-labels.csv")
+mod_data$labels <- participant_labels
+mod_data$labels<- as.factor(mod_data$labels)
+mod_data <- mod_data %>% filter(labels!=0)
+
+# Encode cup and non-cup user labels
+# 1 = Cup user
+# 0 = Non-cup user
+mod_data$cup_labels <- 1
+mod_data$cup_labels[mod_data$labels == 1] <- 0
+mod_data$cup_labels <- as.factor(mod_data$cup_labels)
+```
+
+```{r}
+non_user_sample <- mod_data %>% filter(labels == 1) %>% sample_n(90)
+independent_users <- mod_data %>% filter(labels == 2)
+campuscup_users <- mod_data %>% filter(labels==3)
+sampled_data <- rbind(non_user_sample, independent_users, campuscup_users)
+```
+
+```{r}
+ggplot(data=sampled_data, aes(x=aggregate_education_final, fill=labels)) + geom_bar(aes(y=..count..))
+```
+
+```{r}
+ggplot(data=sampled_data, aes(x=aggregate_education_final, fill=cup_labels)) + geom_bar(aes(y=..count..))
+```
+
+```{r}
+ggplot(data=sampled_data, aes(x=aggregate_attitude_final, fill=labels)) + geom_histogram(binwidth=10)
+```
+
+```{r}
+ggplot(data=mod_data, aes(x=aggregate_attitude_final, fill=cup_labels)) + geom_histogram(binwidth=10)
+```
+
+
+```{r}
+# Mean and variance for each group with 3 labels
+aggregate(sampled_data$aggregate_attitude_final, list(sampled_data$labels), FUN=mean)
+aggregate(sampled_data$aggregate_education_final, list(sampled_data$labels), FUN=mean)
+var(non_user_sample$aggregate_attitude_final)
+var(independent_users$aggregate_attitude_final)
+var(campuscup_users$aggregate_attitude_final)
+var(non_user_sample$aggregate_education_final)
+var(independent_users$aggregate_education_final)
+var(campuscup_users$aggregate_education_final)
+```
+
+```{r}
+# Mean and variance for each group with 2 labels
+aggregate(mod_data$aggregate_attitude_final, list(mod_data$cup_labels), FUN=mean)
+aggregate(mod_data$aggregate_education_final, list(mod_data$cup_labels), FUN=mean)
+
+all_cup_users <- mod_data %>% filter(cup_labels!=0)
+non_cup_users <- mod_data %>% filter(cup_labels==0)
+var(non_cup_users$aggregate_attitude_final)
+var(all_cup_users$aggregate_attitude_final)
+var(non_cup_users$aggregate_education_final)
+var(all_cup_users$aggregate_education_final)
+```
+
+```{r}
+aggregate(mod_data$aggregate_attitude_final, list(mod_data$gender_diverse), FUN=mean)
+```
+
+
+
+```{r}
+one.way.att <- aov(aggregate_attitude_final ~ labels, data = sampled_data)
+summary(one.way.att)
+
+one.way.ed <- aov(aggregate_education_final ~ labels, data = sampled_data)
+summary(one.way.ed)
+```
+
+```{r}
+TukeyHSD(one.way.att)
+```
+
+```{r}
+twolabs.one.way.att <- aov(aggregate_attitude_final ~ cup_labels, data = mod_data)
+summary(twolabs.one.way.att)
+
+twolabs.one.way.ed <- aov(aggregate_education_final ~ cup_labels, data = mod_data)
+summary(twolabs.one.way.ed)
+```
+```{r}
+TukeyHSD(twolabs.one.way.att)
+```
+```{r}
+TukeyHSD(twolabs.one.way.ed)
+```
+
+
+```{r}
+ggplot(mod_data, aes(x=cup_labels, y=aggregate_attitude_final)) + 
+  stat_summary(fun.y = var, geom = "point") +
+  stat_summary(fun.data = function(y) {
+    data.frame(y = var(y),
+               ymin = ((length(y)-1)*var(y))/qchisq(0.025,length(y)-1),
+               ymax = ((length(y)-1)*var(y))/qchisq(0.975,length(y)-1))
+  }, geom = "errorbar") +
+  ylab("Variance of Attitude Score")
+```
+```{r}
+ggplot(sampled_data, aes(x=labels, y=aggregate_attitude_final)) + 
+  stat_summary(fun.y = var, geom = "point") +
+  stat_summary(fun.data = function(y) {
+    data.frame(y = var(y),
+               ymin = ((length(y)-1)*var(y))/qchisq(0.025,length(y)-1),
+               ymax = ((length(y)-1)*var(y))/qchisq(0.975,length(y)-1))
+  }, geom = "errorbar") +
+  ylab("Variance of Attitude Score")
+```
+
+```{r}
+mod_data$gender_diverse <- 0
+mod_data$gender_diverse[mod_data$`How.would.you.describe.your.gender.identity....Selected.Choice_Cisgender woman` == 0] <- 1
+```
+
+```{r}
+cup_users <- mod_data %>% filter(cup_labels == 1)
+```
+
+
+```{r}
+one.way.att.gen <- aov(aggregate_attitude_final ~ gender_diverse, data = cup_users)
+summary(one.way.att.gen)
+
+one.way.ed.gen <- aov(aggregate_education_final ~ gender_diverse, data = cup_users)
+summary(one.way.ed.gen)
+```
+
+```{r}
+# Conducting t-tests for two label groups
+t.test(aggregate_attitude_final ~ cup_labels, data= mod_data, var.equal=FALSE)
+t.test(aggregate_education_final ~ cup_labels, data= mod_data, var.equal=FALSE)
+```
+
+```{r}
+# Conducting t-tests for three label groups
+leveneTest(data= sampled_data, aggregate_attitude_final ~ labels, center=mean)
+leveneTest(data= sampled_data, aggregate_education_final ~ labels, center=mean)
+```
+
+```{r}
+# Word cloud generation
+
+# For independent cup users
+#Create a vector containing only the text
+ind_user_data <- data %>% filter(Have.you.used.a.menstrual.cup.in.the.last.year.as.a.result.of.participating.in.the.CampusCup.program..sponsored.by.OrganiCup. == "No")
+text <-  strsplit(as.character(ind_user_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice), split=",")
+# Create a corpus  
+docs <- Corpus(VectorSource(text))
+
+docs <- docs %>% tm_map(removeNumbers) %>% tm_map(removePunctuation) %>% tm_map(stripWhitespace)
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeWords, stopwords("english"))
+
+dtm <- TermDocumentMatrix(docs) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df <- data.frame(word = names(words),freq=words)
+write.csv(df, "ind_word_cloud.csv")
+
+df <- read.csv("ind_word_cloud.csv")
+
+set.seed(1234) # for reproducibility 
+wordcloud(words = df$word, freq = df$freq, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"),  scale=c(3.5,0.25))
+```
+
+```{r}
+# For non-cup users
+#Create a vector containing only the text
+non_user_data <- data %>% filter(Do.you.regularly.use.a.menstrual.cup. == "No")
+text <-  strsplit(as.character(non_user_data$Using.the.selected.menstrual.health.products.makes.you.feel...select.all.that.apply..if.any....Selected.Choice), split=",")
+# Create a corpus  
+docs <- Corpus(VectorSource(text))
+
+docs <- docs %>% tm_map(removeNumbers) %>% tm_map(removePunctuation) %>% tm_map(stripWhitespace)
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeWords, stopwords("english"))
+
+dtm <- TermDocumentMatrix(docs) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df <- data.frame(word = names(words),freq=words)
+write.csv(df, "non_word_cloud.csv")
+
+df <- read.csv("non_word_cloud.csv")
+
+set.seed(1234) # for reproducibility 
+wordcloud(words = df$word, freq = df$freq, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"),  scale=c(3.5,0.25))
+```
+
+```{r}
+# For CampusCup participants
+#Create a vector containing only the text
+cc_user_data <- data %>% filter(Have.you.used.a.menstrual.cup.in.the.last.year.as.a.result.of.participating.in.the.CampusCup.program..sponsored.by.OrganiCup. == "Yes")
+text <-  strsplit(as.character(cc_user_data$Using.a.menstrual.cup.makes.you.feel...select.all.that.apply..if.any....Selected.Choice.1), split=",")
+# Create a corpus  
+docs <- Corpus(VectorSource(text))
+
+docs <- docs %>% tm_map(removeNumbers) %>% tm_map(removePunctuation) %>% tm_map(stripWhitespace)
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeWords, stopwords("english"))
+
+dtm <- TermDocumentMatrix(docs) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df <- data.frame(word = names(words),freq=words)
+write.csv(df, "cc_word_cloud.csv")
+
+df <- read.csv("cc_word_cloud.csv")
+
+set.seed(1234) # for reproducibility 
+wordcloud(words = df$word, freq = df$freq, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"),  scale=c(3.5,0.25))
+```
+
+```{r}
+# 2 = a little
+# 3 = a moderate amount
+# 4 = a lot
+# 5 = a great deal
+
+# Encode actual attitude score into one of these
+
+cleaned_mod_data$education_diff <- 0
+
+cleaned_mod_data$education_diff[cleaned_mod_data$aggregate_education_final < 9] <- 4
+cleaned_mod_data$education_diff[cleaned_mod_data$aggregate_education_final < 7] <- 3
+cleaned_mod_data$education_diff[cleaned_mod_data$aggregate_education_final < 5] <- 2
+cleaned_mod_data$education_diff[cleaned_mod_data$aggregate_education_final < 3] <- 1
+cleaned_mod_data$education_diff[cleaned_mod_data$aggregate_education_final < 2] <- 0
+
+
+cleaned_mod_data$ed_discrepancy <- cleaned_mod_data$education_diff - as.numeric(cleaned_mod_data$how_much_do_you_think_you_know_or_do_not_know_about_menstruation)
+# If positive: the participant knows more about menstruation than they think they do
+# If negative: the participant knows less about menstruation than they think they do
+
+cleaned_mod_data$ed_discrepancy
+mean(cleaned_mod_data$ed_discrepancy)
+mean(as.numeric(cleaned_mod_data$how_much_do_you_think_you_know_or_do_not_know_about_menstruation))
+```
+
+
+```{r}
+# Attitude columns : 62:89, 91
+names(cleaned_mod_data) <- sub("to_what_extent_do_you_agree_or_disagree_with_the_following_statements", "", names(cleaned_mod_data))
+write.csv(cleaned_mod_data, "317cleaned_mod_data.csv")
+data_no_att <- cleaned_mod_data[, -c(1:89, 91)]
+write.csv(data_no_att, "317data_no_att.csv")
+```
+
